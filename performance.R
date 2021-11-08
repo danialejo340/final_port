@@ -35,11 +35,11 @@ performance <- function(ret ,r.indice){
   
   CVaR
   rpcvar = ret%*%wpcvar
-  rport[,7] = rpcvar
+  rport[,6] = rpcvar
   
   # Benchmark
   r.benchmark <- r.indice
-  rport[,6] <- r.benchmark
+  rport[,7] <- r.benchmark
   
   # Valor del portafolio
   # PMV
@@ -88,14 +88,14 @@ performance <- function(ret ,r.indice){
   }
   vport[,5] <- port.omega
   
-  CVaR
+  #CVaR
   v.cvar = matrix(0, nrow = t)
   v.cvar[1] = valor
 
   for(i in 2:t){
     v.cvar[i] = v.cvar[i-1]*exp(rpcvar[i-1])
   }
-  vport[,7] <- v.cvar
+  vport[,6] <- v.cvar
   
 
   # Benchmark
@@ -106,7 +106,7 @@ performance <- function(ret ,r.indice){
   for(i in 2:t){
     v.benchmark[i] <- v.benchmark[i-1]*exp(r.benchmark[i-1])
   }
-  vport[,6] <- v.benchmark
+  vport[,7] <- v.benchmark
   
   
   
