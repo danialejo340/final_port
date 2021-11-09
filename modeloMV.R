@@ -12,7 +12,7 @@ modeloMV <- function(ret){
   mu <- colMeans(ret)
   cov <- cov(ret)
   activos <- names(ret)
-  
+  short = 1
   # Optimizacion sin restricciones en cortos
   if(short == 1){
     ones <- rep(1,n)
