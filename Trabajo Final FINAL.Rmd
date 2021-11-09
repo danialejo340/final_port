@@ -1,0 +1,1439 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+#Carga de paquetes
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+rm(list=ls())
+
+library(httr)
+library(zoo)
+library(xts)
+library(quantmod)
+library(quadprog)
+library(dplyr)
+library(tidyquant)
+library(rlist)
+library(kableExtra)
+library(ggplot2)
+library(ggpubr)
+library(viridis)
+library(ROI)
+library(readxl)
+library(viridis)
+library(PortfolioAnalytics)
+library(writexl)
+library(devtools)
+library(roxygen2)
+
+```
+
+#Llamado de funciones
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+source_url("https://raw.githubusercontent.com/danialejo340/final_port/main/precios.R")
+source_url("https://raw.githubusercontent.com/danialejo340/final_port/main/modeloMV.R")
+source_url("https://raw.githubusercontent.com/danialejo340/final_port/main/performance.R")
+source_url("https://raw.githubusercontent.com/danialejo340/final_port/main/Omega.R")
+source_url("https://raw.githubusercontent.com/danialejo340/final_port/main/Treynor.R")
+source_url("https://raw.githubusercontent.com/danialejo340/final_port/main/sortino.R")
+source_url("https://raw.githubusercontent.com/danialejo340/final_port/main/cvar.R")
+```
+
+
+# Selección de activos
+
+```{r}
+activos = c("IT","FTNT","NDAQ","TGT","LH","HCA","TECH","CRL","JCI")
+fechai = "2011-08-31"
+fechaf = "2020-09-30"
+periodicidad = "monthly"
+preciosx = readRDS(gzcon(url("https://github.com/danialejo340/final_port/blob/main/preciosIS.rds?raw=true")))
+retornos = diff(log(preciosx))[-1]
+cov = cov(retornos)
+mu = colMeans(retornos)
+var = diag(cov)
+sigma = sqrt(var)
+```
+
+
+```{r}
+indice <- c("^GSPC")
+p.indice <- f.precios(indice,fechai,fechaf,periodicidad)
+r.indice <- diff(log(p.indice))[-1,]
+
+## Clasificacion de activos
+
+rf <- 0 
+n <- length(mu)   
+short <- 0  #(1: con cortos; 0: sin cortos)
+
+```
+
+
+
+
+***  
+   
+   
+#Medidas de desempeño ACCIONES
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+car_var <- matrix(10,2)
+
+
+retorno.prom <- rbind(round(mu,4))
+risk.a <- rbind(round(sigma,4))
+
+# Sharpe
+sharpe.act1 = matrix(0, ncol = ncol(retornos))
+for (i in 1:length(retorno.prom)) {
+  sharpe.act1[,i] = (retorno.prom[,i]-rf)/risk.a[,i]
+}
+
+colnames(sharpe.act1) = activos
+
+
+# Treynor
+
+n = length(mu)
+betas = matrix(0,ncol = n)
+varerror = matrix(0,ncol = n)
+
+for (i in 1:9) {
+    
+    modelo = lm(retornos[,i] ~ r.indice) # para obtener los betas
+    betas[i] = coefficients(modelo)[2]
+    varerror[i] = var(residuals(modelo))
+    
+}
+
+treynor.2 = round((mu-rf)/betas, 4)
+
+
+# Sortino
+
+semvar = SemiVariance(retornos)
+sortino.2 = round((mu-rf)/semvar, 4)
+
+# Omega
+h = 0
+omega.2 = matrix(0, nrow = 1, ncol = n)
+
+for (i in 1:n){
+  omega.2[,i] = (sum(pmax(retornos[,i] - h, 0))) / (sum(pmax(h - retornos[,i], 0)))
+}
+
+#Cvar
+
+
+ 
+cvar.2 = CVaR(retornos)
+
+#Drawdown
+ 
+drawdown.2 = maxDrawdown(retornos)
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+# Creación tabla
+car_var = matrix(0,ncol = 9,nrow = 6)
+car_var <- rbind(retorno.prom, risk.a, sharpe.act1, treynor.2, sortino.2, omega.2, cvar.2, drawdown.2 )
+car_var = t(car_var)
+colnames(car_var) <- c("Ret_Promedio", "Desv_Estandar", "Sharpe", "Treynor", 
+                       "Sortino", "Omega", "CVaR", "Drawdown")
+rownames(car_var) <- activos
+car_var = round(as.data.frame(car_var),4)
+
+    car_var[c("Ret_Promedio", "Desv_Estandar", "Sharpe", "Treynor",
+          "Sortino", "Omega", "CVaR", "Drawdown")] %>%
+      mutate(Ret_Promedio = cell_spec(Ret_Promedio, color = 
+          ifelse(Ret_Promedio == min(Ret_Promedio) ,"red",ifelse(Ret_Promedio == max(Ret_Promedio),"green","black")), bold = T)) %>%
+      mutate(Desv_Estandar = cell_spec(Desv_Estandar, color =
+          ifelse(Desv_Estandar == min(Desv_Estandar), "red",ifelse(Desv_Estandar == max(Desv_Estandar),"green","black")), bold = T)) %>%
+      mutate(Sharpe = cell_spec(Sharpe,color = 
+          ifelse(Sharpe == max(Sharpe), "green",ifelse(Sharpe == min(Sharpe),"red","black")), bold = T)) %>%
+      mutate(Treynor = cell_spec(Treynor,color = 
+          ifelse(Treynor == max(Treynor),"green",ifelse(Treynor == min(Treynor),"red","black")), bold = T)) %>%
+      mutate(Sortino = cell_spec(Sortino,color = 
+          ifelse(Sortino == max(Sortino),"green",ifelse(Sortino == min(Sortino),"red","black")), bold = T)) %>%
+      mutate(Omega = cell_spec(Omega,color = 
+          ifelse(Omega == max(Omega),"green",ifelse(Omega == min(Omega),"red","black")), bold = T)) %>%
+      
+      mutate(CVaR = cell_spec(CVaR,color = 
+          ifelse(CVaR == max(CVaR),"green",ifelse(CVaR == min(CVaR),"red","black")), bold = T)) %>%
+      mutate(Drawdown = cell_spec(Drawdown,color = 
+          ifelse(Drawdown == max(Drawdown),"green",ifelse(Drawdown == min(Drawdown),"red","black")), bold = T)) %>%  
+      
+      kable(escape = FALSE, caption = "Medidas de Desempeño", booktabs = T, align = "ccccccc") %>%
+      
+      
+        kable_styling(full_width = FALSE)
+
+
+
+
+```
+    
+
+
+
+    
+       
+***  
+   
+
+***    
+    
+#Medidas de desempeño portafolio IS    
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+n = ncol(retornos)
+rf = 0
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+# Modelo MV
+MV <- modeloMV(retornos)
+```
+
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+# Markowitz
+wpo <- MV[[1]]
+rpo <- MV[[2]]
+sigmapo <- MV[[3]]
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+# PMVG
+wpmv <- MV[[4]]
+rpmv <- MV[[5]]
+sigmapmv <- MV[[6]]
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+# Sharpe
+wpt <- MV[[7]]
+rpt <- MV[[8]] 
+sigmapt <- MV[[9]]
+
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+# Treynor
+MT =  m.treynor(retornos, r.indice)
+wpot = MT[[1]]
+rpot = MT[[2]]
+sigmapot = MT[[3]]
+n.optimo = MT[[4]]
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+# Sortino - Semivarianza
+h = 0
+SMV = m.sortino(retornos, h)
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+## F.E Sortino
+wpos <- SMV[[1]]
+rpos <- SMV[[2]]
+sigmapos <- SMV[[3]]
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+# Portafolio Tangente Sortino
+wpts <- SMV[[7]]
+rpts <- SMV[[8]] 
+sigmapts <- SMV[[9]]
+
+```
+
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+# Portafolio Omega
+PO = f.omega(retornos, h)
+wpomega = PO[[1]] 
+rpomega = PO[[2]] 
+sigmaomega = PO[[3]] 
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+# CVAR
+alpha = 0.95
+PCV = f.cvar(retornos, alpha)
+wpcvar = PCV[[1]] 
+rpcvar = PCV[[2]] 
+sigmapcvar = PCV[[3]]
+
+```    
+
+Black Litterman
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+# Modelo BL
+# Parametros
+lambda = (rpcvar-rf)/sigmapcvar^2
+tau = 0.025
+
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+# Solucion de equilibrio anualizada
+pi = (mu-rf)*12
+cov = cov * 12
+wpequi = solve(c(lambda)*cov) %*% pi / sum(solve(c(lambda)*cov) %*% pi)
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+
+# Expectativas: Views
+
+q = c(0.05, 0.01, 0.06,0.18,0.15,0.06,0.20) #IT 0,05 ; FTNT: 0,01; TGT > NADQ: 0,06; LH: 0,18; HCA:0,15; TECH > CRL: 0,06; JCI: 0,20
+
+p = rbind(c(1,0,0,0,0,0,0,0,0),c(0,1,0,0,0,0,0,0,0),c(0,0,-1,1,0,0,0,0,0),c(0,0,0,0,1,0,0,0,0),c(0,0,0,0,0,1,0,0,0),c(0,0,0,0,0,0,1,-1,0),c(0,0,0,0,0,0,0,0,1))
+
+k = dim(p)[1]
+omega = matrix(0,k,k)
+
+
+for(i in 1:k){
+  
+  omega[i,i] = tau*(t(p[i,])%*%cov%*%p[i,])     # tau * p' v p
+  
+}
+
+
+
+```
+ 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+# Formula BL: retornos actualizados
+r.BL <- solve(solve(c(tau)*cov)+t(p)%*%solve(omega)%*%p)%*%(solve(c(tau)*cov)%*%pi
+                                                            +t(p)%*%solve(omega)%*%q)
+
+matriz <- t(rbind(t(r.BL),pi))
+w.BL <- solve(c(lambda)*cov)%*%r.BL/sum(solve(c(lambda)*cov)%*%r.BL)
+
+
+
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+# Optimización sin cortos
+
+Dmat = cov*2
+dvec = rep(0,n)
+Amat = matrix(c(r.BL, -r.BL, rep(1,n),rep(-1,n), diag(length(r.BL))), n, n+4)
+nport = 100
+j = seq(min(r.BL)+0.01,max(r.BL)-0.01,length=nport)
+sigmapBL = matrix(0, nrow = nport)        
+wpoBL = matrix(0, nrow = nport, ncol = n)
+
+for (i in 1:nport){
+  
+  rp = j[i]
+  bvec = c(rp, -rp, 1, -1, rep(0,n))
+  poptimo = solve.QP(Dmat, dvec, Amat, bvec, meq = 2)
+  wpoBL[i,] = poptimo$solution
+  sigmapBL[i,] = sqrt(poptimo$value)
+  
+}
+        
+         
+
+# Portafolio tangente del modelo BL
+cvar_port <- (j-rf)/sigmapBL
+cvar <- cbind(cvar_port,wpoBL)
+cvar.sort <- cvar[order(-cvar[,1]),]
+cvar.sel <- cbind(cvar.sort[1,])
+wptBL <- round(cbind(cvar.sel[2:length(cvar.sel)]),6)
+rownames(wptBL) <- c(activos)
+
+
+
+```
+
+
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+# Plano Riesgo - Retorno
+# 
+# plot(sigma,mu, ylim=c(0,max(mu)*1.3), xlim=c(0,max(sigma)),
+#      main="Plano riesgo-retorno")
+# points(sigmapo,rpo, type="l", col="blue") 
+# points(sigmapt,rpt, col="red")
+# points(sigmapmv,rpmv, col="purple")
+# text(sigmapt,rpt,labels="M",pos = 2, cex=1)
+# text(sigmapmv,rpmv,labels="PMV",pos = 2, cex=0.7)
+# text(sigma,mu,labels = activos,pos = 2,cex=0.6)
+# lines(sigmapos, rpos, col = "darkgreen")  # FE Sortino
+# points(sigmapts, rpts)
+# text(sigmapts, rpts, labels = "S", pos = 2 )
+# text(sigmapcvar, rpcvar, labels = "CVAR", pos = 2 )
+# points(sigmapcvar, rpcvar)
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+par(mfrow = c(1, 2))
+par(mar=c(4, 3, 2, 1))
+    
+# barplot(t(wpt), main="Portafolio Tangente",col = viridis(9) ,axisnames = TRUE, beside = TRUE, las=2, border = 0, cex.lab=1, cex.axis=1, font=1, col.axis="black", cex.names = 0.8)
+# 
+# barplot(t(wpmv), main="PMV",col =  viridis(9) , axisnames = TRUE, beside = TRUE, las = 2, border = 0, cex.lab=1, cex.axis=1, font=1,col.axis="black", cex.names = 0.8)
+# 
+# barplot(t(wpot), main = "Treynor",col =  viridis(9) , axisnames = TRUE, beside = TRUE, las = 2, border = 0, cex.lab=1, cex.axis=1, font=1,col.axis="black", cex.names = 0.8)
+# 
+# barplot(t(wpts), main = "Sortino",col =  viridis(9) , axisnames = TRUE, beside = TRUE, las = 2, border = 0, cex.lab=1, cex.axis=1, font=1,col.axis="black", cex.names = 0.8)
+# 
+# barplot(t(wpomega), main = "Omega",col =  viridis(9) , axisnames = TRUE, beside = TRUE, las = 2, border = 0, cex.lab=1, cex.axis=1, font=1,col.axis="black", cex.names = 0.8)
+
+
+barplot(t(wpcvar), main = "Cvar",col =  inferno(9) , axisnames = TRUE, beside = TRUE, las = 2, border = 0, cex.lab=1, cex.axis=1, font=1,col.axis="black", cex.names = 0.8)
+
+barplot(t(wptBL), main = "BL",col =  inferno(9) , axisnames = TRUE, beside = TRUE, las = 2, border = 0, cex.lab=1, cex.axis=1, font=1,col.axis="black", cex.names = 0.8)
+
+
+```
+
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+valor <- 100 
+DH <- performance(retornos,r.indice)
+Performance <-ts(DH[[1]],start=2011, frequency=12)
+
+plot(Performance[,6], col="#FBA70C", type='l',main="Evaluación de desempeño - IS", 
+     ylab="Valor del portafolio", xlab="Tiempo",ylim=c(min(Performance),
+                                                       max(Performance)), lwd = 2)
+# lines(Performance[,2], col='black')
+# lines(Performance[,3], col='orange')
+# lines(Performance[,4], col='red')
+# lines(Performance[,5], col='darkgreen')
+# lines(Performance[,6], col='darkgray', lwd = 2)
+lines(Performance[,7], col="#410967", lwd = 2)
+lines(Performance[,8], col="#A42C61", lwd = 2)
+
+
+
+legend("topleft",c("Cvar","BL", "Benchmark"),
+       fill=c("#FBA70C","#410967","#A42C61"))
+
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+# Calculos para Treynor
+
+n.portfolio = 8
+betas = matrix(0,ncol = n.portfolio)
+varerror = matrix(0,ncol = n.portfolio)
+
+for (i in 1:8) {
+    
+    modelo = lm(DH[[2]][,i] ~ DH[[2]][,8]) # para obtener los betas
+    betas[i] = coefficients(modelo)[2]
+    varerror[i] = var(residuals(modelo))
+}
+
+mu2 = colMeans(DH[[2]])
+treynor_1 = (mu2-rf) / betas
+
+
+# Calculos para Sortino
+
+semivar = SemiVariance(DH[[2]])
+semivar = rbind(semivar[6], semivar[7], semivar[8])
+
+# Calculos para Omega
+
+omega = matrix(0, nrow = n.portfolio, ncol = 1)
+for (i in 6:n.portfolio){  
+  omega[i,] = (sum(pmax(DH[[2]][,i] - h, 0))) / (sum(pmax(h - DH[[2]][,i], 0)))
+}
+
+
+```
+
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+rp.hist <- DH[[2]]
+ 
+ retorno <- round(rbind(mean(rp.hist[,6]), mean(rp.hist[,7]), mean(rp.hist[,8])),4)
+ 
+ riesgo <- round(rbind(sd(rp.hist[,6]), sd(rp.hist[,7]), sd(rp.hist[,8])),4)
+ 
+ sharpe <- round(rbind((retorno[1]-rf)/riesgo[1],
+                       (retorno[2]-rf)/riesgo[2],
+                       (retorno[3]-rf)/riesgo[3]),4)
+ 
+ 
+ treynor = round(treynor_1[,6:8], 4)
+ 
+ sortino = (mu2[6:8]-rf)/semivar
+ 
+ 
+ omega = omega[6:8,]
+ 
+ drawdown = t(maxDrawdown(DH[[2]][,6:8]))
+ 
+ fechas = seq(as.Date(fechai), length = nrow(retornos), by = "months")
+ aux.rphist = xts(rp.hist, order.by = fechas)
+ 
+ cvar = t(CVaR(aux.rphist[,6:8]))
+   
+ Resumen <- cbind(retorno,riesgo, sharpe, treynor, sortino, omega, cvar, drawdown)
+ colnames(Resumen) <- c("Retorno","Riesgo","Sharpe", "Treynor", "Sortino",
+                        "Omega", "Cvar", "Drawdown")
+ rownames(Resumen) <- c("Cvar","BL", "Indice")
+ Resumen = round(as.data.frame(Resumen),4)
+ 
+```
+
+
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+Resumen[c("Retorno","Riesgo","Sharpe", "Treynor", "Sortino", "Omega", "Cvar", "Drawdown")] %>% 
+   mutate(Retorno = cell_spec(Retorno, color = 
+          ifelse(Retorno > max(Resumen[,1])*0.99,"green",
+                 ifelse(Retorno < min(Resumen[,1])*1.01,"red","black")), bold = T)) %>% 
+   
+   mutate(Riesgo = cell_spec(Riesgo, color = 
+          ifelse(Riesgo > max(Resumen[,2])*0.99,"green",
+                 ifelse(Riesgo < min(Resumen[,2])*1.01,"red","black")), bold = T)) %>% 
+   mutate(Sharpe = cell_spec(Sharpe, color = 
+          ifelse(Sharpe > max(Resumen[,3])*0.99,"green",
+                 ifelse(Sharpe < min(Resumen[,3])*1.01,"red","black")), bold = T)) %>% 
+   mutate(Treynor = cell_spec(Treynor, color = 
+          ifelse(Treynor > max(Resumen[,4])*0.9999,"green",
+                 ifelse(Treynor < min(Resumen[,4])*1.01,"red","black")), bold = T)) %>% 
+   mutate(Sortino = cell_spec(Sortino, color = 
+          ifelse(Sortino > max(Resumen[,5])*0.99,"green",
+                 ifelse(Sortino < min(Resumen[,5])*1.01,"red","black")), bold = T)) %>% 
+   mutate(Omega = cell_spec(Omega, color = 
+          ifelse(Omega > max(Resumen[,6])*0.99,"green",
+                 ifelse(Omega < min(Resumen[,6])*1.01,"red","black")), bold = T)) %>% 
+  mutate(Cvar = cell_spec(Cvar, color = 
+          ifelse(cvar > max(Resumen[,7])*1.0001,"green",
+                 ifelse(cvar < min(Resumen[,7])*0.99,"red","black")), bold = T))  %>%
+  
+   mutate(Drawdown = cell_spec(Drawdown, color = 
+          ifelse(Drawdown > max(Resumen[,8])*0.99,"red",
+                 ifelse(Drawdown < min(Resumen[,8])*1.01,"green","black")), bold = T)) %>% 
+    kable(escape = FALSE, caption = "Tabla de Resumen - IS", booktabs = T) %>%
+        kable_styling(bootstrap_options = c("hold_position", "striped"), full_width = F, 
+                position = "center")
+
+
+
+# Resumen[5,6]
+# kable(Resumen,booktabs = TRUE, caption = "Tabla de Resumen - IS")%>%
+#  kable_styling(bootstrap_options = c("hold_position", "striped"), full_width = F,
+#                 position = "center")
+
+```
+
+
+##Medidas de desempeño activo IS
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+#Return Attribution IS
+
+##Insumo 1: Wb
+
+wtech = 0.2315
+wfin = 0.1452
+wcon = 0.1223
+whealth = 0.1425
+windus = 0.1017
+
+Wb = rbind(wtech, wfin, wcon, whealth, windus)
+row.names(Wb) = c("Tecnologia", "Finanzas", "Consumo", "Salud", "Industrial" )
+
+##Insumo 2: Wp-Sharpe
+
+wptech = sum(wpcvar[1:2])
+wpfin = wpcvar[3]
+wpcon = wpcvar[4]
+wphealth = sum(wpcvar[5:8])
+wpindus = wpcvar[9]
+
+Wp = rbind(wptech, wpfin, wpcon, wphealth, wpindus)
+Wp = round(Wp, 4)
+row.names(Wp) = c("Tecnologia", "Finanzas", "Consumo", "Salud", "Industrial" )
+
+wptech1 = sum(wptBL[1:2])
+wpfin1 = wptBL[3]
+wpcon1 = wptBL[4]
+wphealth1 = sum(wptBL[5:8])
+wpindus1 = wptBL[9]
+
+Wp1 = rbind(wptech1, wpfin1, wpcon1, wphealth1, wpindus1)
+Wp1 = round(Wp1, 4)
+
+#Insumo 4: Rp
+Rp = t(retorno.prom)
+rptech = sum(retorno.prom[1:2])
+rpfin = sum(retorno.prom[3])
+rpcon = sum(retorno.prom[4])
+rphealth = sum(retorno.prom[5:8])
+rpindus = sum(retorno.prom[9])
+
+Rp = rbind(rptech, rpfin, rpcon, rphealth, rpindus)
+rownames(Rp) = c("Tecnologia", "Finanzas", "Consumo", "Salud", "Industrial" )
+
+ret_act = sum(Wp*Rp)
+
+ret_act1 = sum(Wp1*Rp)
+#Insumo 4: Rb
+
+Rb = Resumen[3,1]*Wb
+Rb = round(Rb, 4)
+
+ret_actind = sum(Wb*Rb)
+
+#Efecto asignación
+ef_asig = (Wp-Wb)*Rb
+ef_asig = round(ef_asig, 5)
+s_ef_asig = sum(ef_asig)
+
+ef_asig1 = (Wp1-Wb)*Rb
+ef_asig1 = round(ef_asig1, 5)
+s_ef_asig1 = sum(ef_asig1)
+#Efecto selección
+ef_selec = (Rp-Rb)*Wb
+ef_selec = round(ef_selec, 5)
+s_ef_selec = sum(ef_selec)
+
+ef_selec1 = (Rp-Rb)*Wb
+ef_selec1 = round(ef_selec1, 5)
+s_ef_selec1 = sum(ef_selec1)
+#Efecto selección
+ef_inter = (Wp-Wb)*(Rp-Rb)
+ef_inter = round(ef_inter, 5)
+s_ef_inter = sum(ef_inter)
+
+ef_inter1 = (Wp1-Wb)*(Rp-Rb)
+ef_inter1 = round(ef_inter1, 5)
+s_ef_inter1 = sum(ef_inter1)
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+b = ret_act - ret_actind
+c = s_ef_asig + s_ef_selec + s_ef_inter
+b
+c
+
+d = ret_act1 - ret_actind
+e = s_ef_asig1 + s_ef_selec1 + s_ef_inter1
+d
+e
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+#Tabla Return Attribution IS
+
+tablais = cbind(ef_asig, ef_selec, ef_inter, ef_asig1, ef_selec1, ef_inter1)
+colnames(tablais) = c("Ef. Asig", "Ef. Selec", "Ef. Inter", "Ef. Asig", "Ef. Selec", "Ef. Inter" )
+
+kable(tablais, escape = FALSE, caption = "Return Attribution - IS", booktabs = T, align = "cccc") %>%
+        kable_styling(bootstrap_options = c("hold_position", "striped"), full_width = F, 
+                position = "center") %>% 
+  add_header_above(c(" " = 1 ,"CVaR" = 3, "BL" = 3)) 
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+#Medidas de desempeño IS
+
+
+pesos = list(wpcvar, wptBL)
+
+Rp = matrix(0, nrow = nrow(retornos), ncol = 2)
+
+for (i in 1:2){  
+  Rp[,i] = retornos%*%pesos[[i]]
+}
+
+Rb = matrix(r.indice)
+
+alpha = matrix(0, nrow = 2, ncol = 1)
+for(i in 1:2){
+  alpha[i,] = mean(Rp[,i]-Rb)*12
+}
+
+te = matrix(0, nrow = 2, ncol = 1)
+for(i in 1:2){
+  te[i,] = sd(Rp[,i]-Rb)*sqrt(12)
+}
+
+ir = matrix(0, nrow = 2, ncol = 1)
+for(i in 1:2){
+  ir[i,] = alpha[i,]/te[i,]
+}
+
+#RATIO DIVERSIFICACION
+vol = sigma
+sigmapBL = sqrt(t(wptBL)%*% cov %*% wptBL)
+sigmap = list(sigmapcvar, sigmapBL)
+
+rd = matrix(0, nrow = 2, ncol = 1)
+for (i in 1:2) {
+  rd[i,] = (t(pesos[[i]])%*%vol)/sigmap[[i]]
+  
+}
+
+medidasIS = cbind(alpha,te, ir, rd)
+colnames(medidasIS) = c("Retorno_Activo","Tracking_Error", "Information_Ratio", "Diversification_Ratio")
+rownames(medidasIS) = c("CVaR", "BL" )
+medidasIS = round(as.data.frame(medidasIS), 4)
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+#Tabla medidas de desempeño IS
+
+medidasIS[c("Retorno_Activo","Tracking_Error", "Information_Ratio", "Diversification_Ratio")] %>% 
+  mutate(Retorno_Activo = cell_spec(Retorno_Activo, color = 
+          ifelse(Retorno_Activo > max(medidasIS[,1])*0.99,"green",
+                 ifelse(Retorno_Activo < min(medidasIS[,1])*1.01,"red","black")), bold = T)) %>% 
+   mutate(Tracking_Error = cell_spec(Tracking_Error, color = 
+          ifelse(Tracking_Error > max(medidasIS[,2])*0.99,"red",
+                 ifelse(Tracking_Error < min(medidasIS[,2])*1.01,"green","black")), bold = T)) %>% 
+   
+   mutate(Information_Ratio = cell_spec(Information_Ratio, color = 
+          ifelse(Information_Ratio > max(medidasIS[,3])*0.99,"green",
+                 ifelse(Information_Ratio < min(medidasIS[,3])*1.01,"red","black")), bold = T)) %>% 
+   mutate(Diversification_Ratio = cell_spec(Diversification_Ratio, color = 
+          ifelse(Diversification_Ratio > max(medidasIS[,4])*0.99,"green",
+                 ifelse(Diversification_Ratio < min(medidasIS[,4])*1.001,"red","black")), bold = T)) %>% 
+   
+                 
+   
+    kable(escape = FALSE, caption = "Tabla Medidas de Desempeño - IS", booktabs = T, align = "cccc") %>%
+        kable_styling(bootstrap_options = c("hold_position", "striped"), full_width = F, 
+                position = "center")
+```
+
+#Medidas de desempeño portafolio OS
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+fechaifm <- '2020-09-30'
+fechaffm <- '2021-10-31'
+
+preciosfm <- readRDS(gzcon(url("https://github.com/danialejo340/final_port/blob/main/preciosOS.rds?raw=true")))
+retornosfm <- diff(log(preciosfm))[-1,]
+murf1 = colMeans(retornosfm)
+indicefm <- f.precios(indice,fechaifm,fechaffm,periodicidad)
+r.indicefm <- diff(log(indicefm))[-1,]
+
+DFM <- performance(retornosfm,r.indicefm)
+performancefm <-ts(DFM[[1]],start=2020.9, frequency=12)
+
+plot(performancefm[,6], col="#FBA70C", type='l',main="Evaluación de desempeño - OS", 
+     ylab = "Valor del portafolio",xlab="Tiempo", ylim=c(valor*0.90,
+                                                         max(performancefm)), lwd = 2)
+
+# lines(performancefm[,2], col='black')
+# lines(performancefm[,3], col='orange')
+# lines(performancefm[,4], col='red')
+# lines(performancefm[,5], col='darkgreen')
+# lines(performancefm[,6], col='purple', lwd = 2)
+lines(performancefm[,7], col="#410967", lwd = 2)
+lines(performancefm[,8], col="#A42C61", lwd = 2)
+legend("topleft",c("Cvar", "BL", "Benchmark"),
+       fill=c("#FBA70C","#410967","#A42C61"))
+```
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+# Calculos para Treynor
+
+n.portfolio = 8
+betas = matrix(0,ncol = n.portfolio)
+varerror = matrix(0,ncol = n.portfolio)
+
+for (i in 1:8) {
+    
+    modelo = lm(DFM[[2]][,i] ~ DFM[[2]][,8]) # para obtener los betas
+    betas[i] = coefficients(modelo)[2]
+    varerror[i] = var(residuals(modelo))
+}
+
+mu2 = colMeans(DFM[[2]])
+treynor_1 = (mu2-rf) / betas
+
+
+# Calculos para Sortino
+
+semivar = SemiVariance(DFM[[2]])
+semivar = rbind(semivar[6], semivar[7], semivar[8])
+
+# Calculos para Omega
+
+omega = matrix(0, nrow = n.portfolio, ncol = 1)
+for (i in 6:n.portfolio){  
+  omega[i,] = (sum(pmax(DFM[[2]][,i] - h, 0))) / (sum(pmax(h - DFM[[2]][,i], 0)))
+}
+
+
+```
+
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+rp.fm <- DFM[[2]]
+ 
+ retorno <- round(rbind(mean(rp.fm[,6]), mean(rp.fm[,7]), mean(rp.fm[,8])),4)
+ 
+ riesgo <- round(rbind(sd(rp.fm[,6]), sd(rp.fm[,7]), sd(rp.fm[,8])),4)
+ 
+ sharpe <- round(rbind((retorno[1]-rf)/riesgo[1],
+                       (retorno[2]-rf)/riesgo[2],
+                       (retorno[3]-rf)/riesgo[3]),4)
+ 
+ 
+ treynor = round(treynor_1[,6:8], 4)
+ 
+ sortino = (mu2[6:8]-rf)/semivar
+ 
+ 
+ omega = omega[6:8,]
+ 
+ drawdown = t(maxDrawdown(DFM[[2]][,6:8]))
+ 
+ fechas = seq(as.Date("2020-11-30"), length = 12, by = "months")
+aux.rp.fm = xts(rp.fm, order.by = fechas)
+ 
+ cvar = t(CVaR(aux.rp.fm[,6:8]))
+   
+ Resumen1 <- cbind(retorno,riesgo, sharpe, treynor, sortino, omega, cvar, drawdown)
+ colnames(Resumen1) <- c("Retorno","Riesgo","Sharpe", "Treynor", "Sortino",
+                        "Omega", "Cvar", "Drawdown")
+ rownames(Resumen1) <- c("Cvar","BL", "Indice")
+ Resumen1 = round(as.data.frame(Resumen),4)
+ 
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+Resumen1[c("Retorno","Riesgo","Sharpe", "Treynor", "Sortino", "Omega", "Cvar", "Drawdown")] %>% 
+   mutate(Retorno = cell_spec(Retorno, color = 
+          ifelse(Retorno > max(Resumen1[,1])*0.99,"green",
+                 ifelse(Retorno < min(Resumen1[,1])*1.01,"red","black")), bold = T)) %>% 
+   
+   mutate(Riesgo = cell_spec(Riesgo, color = 
+          ifelse(Riesgo > max(Resumen1[,2])*0.99,"green",
+                 ifelse(Riesgo < min(Resumen1[,2])*1.01,"red","black")), bold = T)) %>% 
+   mutate(Sharpe = cell_spec(Sharpe, color = 
+          ifelse(Sharpe > max(Resumen1[,3])*0.99,"green",
+                 ifelse(Sharpe < min(Resumen1[,3])*1.01,"red","black")), bold = T)) %>% 
+   mutate(Treynor = cell_spec(Treynor, color = 
+          ifelse(Treynor > max(Resumen[,4])*0.9999,"green",
+                 ifelse(Treynor < min(Resumen1[,4])*1.01,"red","black")), bold = T)) %>% 
+   mutate(Sortino = cell_spec(Sortino, color = 
+          ifelse(Sortino > max(Resumen1[,5])*0.99,"green",
+                 ifelse(Sortino < min(Resumen1[,5])*1.01,"red","black")), bold = T)) %>% 
+   mutate(Omega = cell_spec(Omega, color = 
+          ifelse(Omega > max(Resumen1[,6])*0.99,"green",
+                 ifelse(Omega < min(Resumen1[,6])*1.01,"red","black")), bold = T)) %>% 
+  mutate(Cvar = cell_spec(Cvar, color = 
+          ifelse(cvar > max(Resumen1[,7])*1.0001,"green",
+                 ifelse(cvar < min(Resumen1[,7])*0.99,"red","black")), bold = T))  %>%
+  
+   mutate(Drawdown = cell_spec(Drawdown, color = 
+          ifelse(Drawdown > max(Resumen1[,8])*0.99,"red",
+                 ifelse(Drawdown < min(Resumen1[,8])*1.01,"green","black")), bold = T)) %>% 
+    kable(escape = FALSE, caption = "Tabla de Resumen - OS", booktabs = T) %>%
+        kable_styling(bootstrap_options = c("hold_position", "striped"), full_width = F, 
+                position = "center")
+
+
+
+# Resumen[5,6]
+# kable(Resumen,booktabs = TRUE, caption = "Tabla de Resumen - IS")%>%
+#  kable_styling(bootstrap_options = c("hold_position", "striped"), full_width = F,
+#                 position = "center")
+
+```
+
+
+
+##Medidas de desempeño activo OS
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+#Return Attribution OS
+
+##Insumo 1: Wb
+
+wtech = 0.2315
+wfin = 0.1452
+wcon = 0.1223
+whealth = 0.1425
+windus = 0.1017
+
+Wb = rbind(wtech, wfin, wcon, whealth, windus)
+row.names(Wb) = c("Tecnologia", "Finanzas", "Consumo", "Salud", "Industrial" )
+
+##Insumo 2: Wp-Sharpe
+
+wptech = sum(wpcvar[1:2])
+wpfin = wpcvar[3]
+wpcon = wpcvar[4]
+wphealth = sum(wpcvar[5:8])
+wpindus = wpcvar[9]
+
+Wp = rbind(wptech, wpfin, wpcon, wphealth, wpindus)
+Wp = round(Wp, 4)
+row.names(Wp) = c("Tecnologia", "Finanzas", "Consumo", "Salud", "Industrial" )
+
+wptech1 = sum(wptBL[1:2])
+wpfin1 = wptBL[3]
+wpcon1 = wptBL[4]
+wphealth1 = sum(wptBL[5:8])
+wpindus1 = wptBL[9]
+
+Wp1 = rbind(wptech1, wpfin1, wpcon1, wphealth1, wpindus1)
+Wp1 = round(Wp1, 4)
+
+#Insumo 3: Rp
+
+Rp = t(murf1)
+rptech = sum(murf1[1:2])
+rpfin = sum(murf1[3])
+rpcon = sum(murf1[4])
+rphealth = sum(murf1[5:8])
+rpindus = sum(murf1[9])
+
+
+Rp = rbind(rptech, rpfin, rpcon, rphealth, rpindus)
+rownames(Rp) = c("Tecnologia", "Finanzas", "Consumo", "Salud", "Industrial" )
+
+ret_act = round(sum(Wp*Rp),4)
+
+ret_act1 = sum(Wp1*Rp)
+#Insumo 4: Rb
+
+Rb = Resumen1[3,1]*Wb
+Rb = round(Rb, 4)
+
+ret_actind = sum(Wb*Rb)
+
+#Efecto asignación
+ef_asig = (Wp-Wb)*Rb
+ef_asig = round(ef_asig, 5)
+s_ef_asig = sum(ef_asig)
+
+ef_asig1 = (Wp1-Wb)*Rb
+ef_asig1 = round(ef_asig1, 5)
+s_ef_asig1 = sum(ef_asig1)
+#Efecto selección
+ef_selec = (Rp-Rb)*Wb
+ef_selec = round(ef_selec, 5)
+s_ef_selec = sum(ef_selec)
+
+ef_selec1 = (Rp-Rb)*Wb
+ef_selec1 = round(ef_selec1, 5)
+s_ef_selec1 = sum(ef_selec1)
+#Efecto selección
+ef_inter = (Wp-Wb)*(Rp-Rb)
+ef_inter = round(ef_inter, 5)
+s_ef_inter = sum(ef_inter)
+
+ef_inter1 = (Wp1-Wb)*(Rp-Rb)
+ef_inter1 = round(ef_inter1, 5)
+s_ef_inter1 = sum(ef_inter1)
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+b = ret_act - ret_actind
+c = s_ef_asig + s_ef_selec + s_ef_inter
+b
+c
+
+d = ret_act1 - ret_actind
+e = s_ef_asig1 + s_ef_selec1 + s_ef_inter1
+d
+e
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+#Tabla Return Attribution OS
+
+tablaos = cbind(ef_asig, ef_selec, ef_inter, ef_asig1, ef_selec1, ef_inter1)
+colnames(tablaos) = c("Ef. Asig", "Ef. Selec", "Ef. Inter", "Ef. Asig", "Ef. Selec", "Ef. Inter" )
+
+kable(tablaos, escape = FALSE, caption = "Return Attribution - IS", booktabs = T, align = "cccc") %>%
+        kable_styling(bootstrap_options = c("hold_position", "striped"), full_width = F, 
+                position = "center") %>% 
+  add_header_above(c(" " = 1 ,"CVaR" = 3, "BL" = 3)) 
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+#Medidas de desempeño OS
+
+Rp = matrix(0, nrow = nrow(retornosfm), ncol = 2)
+
+for (i in 1:2){  
+  Rp[,i] = retornosfm%*%pesos[[i]]
+}
+
+Rb = matrix(r.indicefm)
+
+alpha = matrix(0, nrow = 2, ncol = 1)
+for(i in 1:2){
+  alpha[i,] = mean(Rp[,i]-Rb)*12
+}
+
+te = matrix(0, nrow = 2, ncol = 1)
+for(i in 1:2){
+  te[i,] = sd(Rp[,i]-Rb)*sqrt(12)
+}
+
+ir = matrix(0, nrow = 2, ncol = 1)
+for(i in 1:2){
+  ir[i,] = alpha[i,]/te[i,]
+}
+
+#RATIO DIVERSIFICACION
+
+rd = matrix(0, nrow = 2, ncol = 1)
+for (i in 1:2) {
+  rd[i,] = (t(pesos[[i]])%*%vol)/sigmap[[i]]
+  
+}
+
+medidasOS = cbind(alpha,te, ir, rd)
+colnames(medidasOS) = c("Retorno_Activo","Tracking_Error", "Information_Ratio", "Diversification_Ratio")
+rownames(medidasOS) = c("Cvar", "BL")
+medidasOS = round(as.data.frame(medidasOS), 4)
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+#Tabla medidas de desempeño OS
+
+medidasOS[c("Retorno_Activo","Tracking_Error", "Information_Ratio", "Diversification_Ratio")] %>% 
+  mutate(Retorno_Activo = cell_spec(Retorno_Activo, color = 
+          ifelse(Retorno_Activo > max(medidasOS[,1])*0.99,"green",
+                 ifelse(Retorno_Activo < min(medidasOS[,1])*1.01,"red","black")), bold = T)) %>% 
+   mutate(Tracking_Error = cell_spec(Tracking_Error, color = 
+          ifelse(Tracking_Error > max(medidasOS[,2])*0.99,"red",
+                 ifelse(Tracking_Error < min(medidasOS[,2])*1.01,"green","black")), bold = T)) %>% 
+   
+   mutate(Information_Ratio = cell_spec(Information_Ratio, color = 
+          ifelse(Information_Ratio > max(medidasOS[,3])*0.99,"green",
+                 ifelse(Information_Ratio < min(medidasOS[,3])*1.01,"red","black")), bold = T)) %>% 
+   mutate(Diversification_Ratio = cell_spec(Diversification_Ratio, color = 
+          ifelse(Diversification_Ratio > max(medidasOS[,4])*0.99,"green",
+                 ifelse(Diversification_Ratio < min(medidasOS[,4])*1.001,"red","black")), bold = T)) %>% 
+   
+                 
+   
+    kable(escape = FALSE, caption = "Tabla Medidas de Desempeño - OS", booktabs = T, align = "cccc") %>%
+        kable_styling(bootstrap_options = c("hold_position", "striped"), full_width = F, 
+                position = "center")
+```
+
+
+#Portafolio Internacional
+
+## Punto 1. Distribucion de los retornos
+
+```{r}
+
+x = rnorm(1000, mean = 0, sd = 0.1)
+  
+par(mfrow = c(3,3))
+hist(retornos[,1], breaks = 30, main = "CDNS", xlim = c(-0.3, 0.3), col = "#FBA70C", xlab = "")
+lines(density(retornos[,1]), lty = 2)
+curve(dnorm(x, mean = 0, sd = 0.1), add = T, col = "blue")
+hist(retornos[,2], breaks = 30, main = "MSFT", xlim = c(-0.3, 0.3), col = "#FBA70C", xlab = "")
+lines(density(retornos[,2]), lty = 2)
+curve(dnorm(x, mean = 0, sd = 0.1), add = T, col = "blue")
+hist3 =  hist(retornos[,3], breaks = 30, main = "MSCI", xlim = c(-0.3, 0.3), col = "#FBA70C", xlab = "")
+lines(density(retornos[,3]), lty = 2)
+curve(dnorm(x, mean = 0, sd = 0.1), add = T, col = "blue")
+hist4 =  hist(retornos[,4], breaks = 30, main = "AMZN", xlim = c(-0.3, 0.3), col = "#FBA70C", xlab = "")
+lines(density(retornos[,4]), lty = 2)
+curve(dnorm(x, mean = 0, sd = 0.1), add = T, col = "blue")
+hist5 =  hist(retornos[,5], breaks = 30, main = "DHR", xlim = c(-0.3, 0.3), col = "#FBA70C", xlab = "")
+lines(density(retornos[,5]), lty = 2)
+curve(dnorm(x, mean = 0, sd = 0.1), add = T, col = "blue")
+hist6 =  hist(retornos[,6], breaks = 30, main = "ZTS", xlim = c(-0.3, 0.3), col = "#FBA70C", xlab = "")
+lines(density(retornos[,6]), lty = 2)
+curve(dnorm(x, mean = 0, sd = 0.1), add = T, col = "blue")
+hist7 =  hist(retornos[,7], breaks = 30, main = "RMD", xlim = c(-0.3, 0.3), col = "#FBA70C", xlab = "")
+lines(density(retornos[,7]), lty = 2)
+curve(dnorm(x, mean = 0, sd = 0.1), add = T, col = "blue")
+hist8 =  hist(retornos[,8], breaks = 30, main = "WST", xlim = c(-0.3, 0.3), col = "#FBA70C", xlab = "")
+lines(density(retornos[,8]), lty = 2)
+curve(dnorm(x, mean = 0, sd = 0.1), add = T, col = "blue")
+hist9 =  hist(retornos[,9], breaks = 30, main = "ODFL", xlim = c(-0.3, 0.3), col = "#FBA70C", xlab = "")
+lines(density(retornos[,9]), lty = 2)
+curve(dnorm(x, mean = 0, sd = 0.1), add = T, col = "blue")
+
+
+```
+
+
+## Punto 2. Sharpe
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+set.seed(1)
+pspec = portfolio.spec(activos)
+pspec = add.constraint(portfolio = pspec,type='box',min=0,max=1)
+pspec = add.objective(portfolio = pspec,type='risk', name="StdDev")
+pspec = add.objective(portfolio = pspec,type='return', name="mean")
+pesos.op = random_portfolios(pspec, permutations = 5000, rp_method = "simplex")
+
+rpsh = matrix(0, nrow = nrow(pesos.op))
+sigmash = matrix(0, nrow = nrow(pesos.op))
+sharpe.op = matrix(0, nrow = nrow(pesos.op))
+
+for (i in 1:nrow(pesos.op)){
+  rpsh[i] = pesos.op[i,]%*%mu
+  sigmash[i] = sqrt(t(pesos.op[i,])%*%cov%*%pesos.op[i,])
+  sharpe.op[i] = (rpsh[i]-rf)/sigmash[i]
+}
+
+colnames(sharpe.op) = "Sharpe"
+matriz = cbind(pesos.op, sharpe.op)
+matriz.ord = matriz[order(-matriz[,10]), ]
+sharpe = matriz.ord[1,]
+sharpe.det = round(matriz.ord[1,10],5)
+sharpe.prob = 0.69938
+wsharpe.portfolio = round(sharpe[1:length(activos)],5)
+ 
+
+sharpe.deter = c(0.064623, 0.302995, 0.239360, 0.000000, 0.000000,  0.236407, 0.133271,  0.000000, 0.023345)
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+pesos.crystal = c(0.0244, 0.2452,	0.2133,	0.0000,	0.0000,	0.2720, 0.1536,	0.0915,	0.0000)
+wsharpe = rbind(sharpe.deter, wsharpe.portfolio, pesos.crystal)  
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+par(mfrow = c(1,3),mar = c(4,3,15,3))
+barplot(t(wsharpe[1,]),col = "#410967",axisnames = TRUE, beside = TRUE, las=2, border = 0, cex.lab=1, cex.axis=1, font=1, col.axis="black", cex.names = 0.8, cex.main = 1, ylim = c(0,0.5))
+title("Determinístico", adj = 0.5, line = 5)
+barplot(t(wsharpe[2,]),col = "#A42C61" ,axisnames = TRUE, beside = TRUE, las=2, border = 0, cex.lab=1, cex.axis=1, font=1, col.axis="black", cex.names = 0.8, cex.main = 1, ylim = c(0,0.5))
+title(" Probabilístico P.A", adj = 0.5, line = 5)
+barplot(t(wsharpe[2,]),col = "#FBA70C" ,axisnames = TRUE, beside = TRUE, las=2, border = 0, cex.lab=1, cex.axis=1, font=1, col.axis="black", cex.names = 0.8, cex.main = 1, ylim = c(0,0.5))
+title("Probabilístico C.B", adj = 0.5, line = 5)
+mtext("Sharpe", side = 1, line = -30, outer = TRUE, cex = 1.5)
+
+```
+
+
+## Punto 2. Omega
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+h = 0
+omega = matrix(0, nrow = nrow(pesos.op))
+rpom = matrix(0, nrow = nrow(retornos), ncol = (nrow(pesos.op)))
+retornos = as.matrix(retornos)
+
+for (i in 1:nrow(pesos.op)){
+  
+  for (n in 1:nrow(retornos)){
+    
+    rpom[n, i] = t(pesos.op[i,])%*%retornos[n,]
+    
+  }
+  
+  omega[i,] = (sum(pmax(rpom[,i] - h, 0))) / (sum(pmax(h - rpom[,i], 0))) 
+  
+}
+
+colnames(omega) = "Omega"
+omega.matriz = cbind(omega, pesos.op)
+omega.matriz.ord = omega.matriz[order(-omega.matriz[,1]),]
+omega.port = round(omega.matriz.ord[1,1],5)
+wpomega.port = round(omega.matriz.ord[1,2:10],5)
+
+omega.det = c(0.0000, 0.3253, 0.3899, 0.0206, 0.0000, 0.0000, 0.2642, 0.0000, 0.0000)
+
+```
+
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+pesos.cb = c(0.000,	0.151,	0.333,	0.000,	0.000,	0.392,	0.103,	0.007,	0.014)
+wpomega = rbind(omega.det, wpomega.port ,pesos.cb) 
+
+par(mfrow = c(1,3), mar = c(4,3,13,3))
+barplot(t(wpomega[1,]), col = "#410967" ,axisnames = TRUE, beside = TRUE, las=2, border = 0, cex.lab=1, cex.axis=1, font=1, col.axis="black", cex.names = 0.8, cex.main = 1, ylim = c(0,0.5))
+title("Determinístico", adj = 0.5, line = 5)
+barplot(t(wpomega[2,]), col = "#A42C61" ,axisnames = TRUE, beside = TRUE, las=2, border = 0, cex.lab=1, cex.axis=1, font=1, col.axis="black", cex.names = 0.8, cex.main = 1,ylim = c(0,0.5))
+title("Probabilístico P.A", adj = 0.5, line = 5)
+barplot(t(wpomega[3,]),col = "#FBA70C" ,axisnames = TRUE, beside = TRUE, las=2, border = 0, cex.lab=1, cex.axis=1, font=1, col.axis="black", cex.names = 0.8, cex.main = 1,ylim = c(0,0.5))
+title("Probabilístico C.B", adj = 0.5, line = 5)
+mtext("Omega", side = 1, line = -30, outer = TRUE, cex = 2)
+
+
+```
+
+
+## Punto 3. Portafolio Internacional
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+activos.int = c("^GSPC", "^STOXX50E" ,"^FTSE","^N225","USDEUR=X","USDJPY=X","USDGBP=X")
+fechai = "2016-09-01"
+fechaf = "2021-09-30"
+periodicidad = "monthly" 
+
+precios.int = f.precios(activos.int, fechai, fechaf, periodicidad)
+retornos.int = diff(log(precios.int))[-1,]
+
+mu = (colMeans(retornos.int))
+cov = cov(retornos.int)
+var = diag(cov)
+sigma = sqrt(var)
+
+link = "https://github.com/danialejo340/final_port/blob/main/msciglobal.xlsx?raw=true"
+temp_file <- tempfile(fileext = ".xlsx")
+
+req <- GET(link, 
+           authenticate(Sys.getenv("GITHUB_PAT"), ""),
+           write_disk(path = temp_file))
+
+msciglobal <- readxl::read_excel(temp_file)
+
+msciglobal = msciglobal[-62,]
+msci = as.matrix(msciglobal[,2])
+colnames(msci) = "^MSCI"
+msci = merge(precios.int ,msci)
+retornos.int <- diff(log(msci))[-1,]
+
+
+
+```
+
+
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+wi = rep(1/4, 4)
+rx = mu
+omega = cov
+n = length(wi)
+betas = matrix(0,ncol = n)
+
+for (i in 1:n) {
+    
+    modelo = lm(retornos.int[,i] ~ retornos.int[,1]) 
+    betas[i] = coefficients(modelo)[2]
+    
+}
+
+diagB = diag(c(betas), n, n)
+B = matrix(c(diagB, 
+             0,1,0,0,
+             0,0,1,0,
+             0,0,0,1), nrow = length(activos.int), byrow = T)
+
+```
+
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+Bw = B %*% wi
+
+# Retorno Sistematico
+rpsi = rx %*% Bw 
+
+# Riesgo Sistematico
+sigmapsi = sqrt(t(Bw) %*% omega %*% Bw)
+
+
+# Modelo MV
+    
+rpmv = rx[1:4] %*% wi
+sigmapmv = sqrt(t(wi) %*% omega[1:4,1:4] %*% wi)
+
+
+```
+
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+activos = c("^GSPC", "^STOXX50E" ,"^FTSE","^N225")
+pspec = portfolio.spec(assets = activos[1:n])
+pspec = add.constraint(portfolio = pspec, type = "box", min = 0, max = 1)
+pspec = add.objective(portfolio = pspec, type = "risk", name = "StdDev")
+pspec = add.objective(portfolio = pspec, type = "return", name = "mean")
+
+rp = random_portfolios(portfolio = pspec, permutations = 5000,
+                       rp_method = "simplex")
+
+
+
+rBw = matrix(0, nrow = nrow(rp), ncol = length(Bw))
+rrpsi = matrix(0, nrow = nrow(rp))
+rsigmapsi = matrix(0, nrow = nrow(rp))
+
+
+for (i in 1:length(rrpsi)){
+    
+    rBwaux = B %*% rp[i,]
+    rrpsi[i,] = rx %*% rBwaux 
+    rsigmapsi[i,] = sqrt(t(rBwaux) %*% omega %*% rBwaux)
+    rBw[i,] = rbind(rBwaux)
+
+}
+
+```
+
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+# MAYOR SHARPE
+
+sharpe.port = rrpsi/rsigmapsi
+matriz = cbind(sharpe.port, rp)
+matriz.ord = matriz[order(-matriz[,1]), ]
+resultado = matriz.ord[1,]
+wpti = round(resultado[2:length(resultado)],6)
+
+
+Bwpo = B %*% wpti
+rpo = rx %*% Bwpo
+sigmapo = sqrt(t(Bwpo) %*% omega %*% Bwpo)
+
+```
+
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+riesgo.pmv = rsigmapsi
+matriz = cbind(riesgo.pmv, rp)
+matriz.ord = matriz[order(matriz[,1]), ]
+resultado = matriz.ord[1,]
+wpti.pmv = resultado[2:length(resultado)]
+
+
+Bwpmv = B %*% wpti.pmv
+rp.pmv = rx %*% Bwpmv
+sigmapo.pmv = sqrt(t(Bwpmv) %*% omega %*% Bwpmv)
+
+
+plot(rsigmapsi, rrpsi)
+points(sigmapo, rpo, col = "red", pch = 19)
+points(sigmapo.pmv, rp.pmv, col = "green", pch = 19)
+
+```
+
+
+# Parte VBA
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+v_finalIS = 300
+DH[[1]][nrow(DH[[1]]),] = rep(v_finalIS, n.portfolio)
+
+vbaIS = data.frame(t(DH[[1]][nrow(DH[[1]]),]))
+
+for (i in 1:nrow(DH[[2]])){
+  
+  for (n in 1:n.portfolio){  
+  
+    vbaIS[i+1, n] = vbaIS[i,n]/(exp(DH[[2]][i,n]))
+    
+  }
+}
+
+v_inversionIS  = vbaIS[nrow(vbaIS),]
+
+
+```
+
+
+```{r}
+
+
+v_finalOS = 500
+DFM[[1]][nrow(DFM[[1]]),] = rep(v_finalOS, n.portfolio)
+
+vbaOS = data.frame(t(DFM[[1]][nrow(DFM[[1]]),]))
+
+for (i in 1:nrow(DFM[[2]])){
+  
+  for (n in 1:n.portfolio){  
+  
+    vbaOS[i+1, n] = vbaOS[i,n]/(exp(DFM[[2]][i,n]))
+    
+  }
+}
+
+v_inversionOS = vbaOS[nrow(vbaOS),]
+
+```
+
