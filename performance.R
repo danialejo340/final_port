@@ -39,7 +39,7 @@ performance <- function(ret ,r.indice){
   rport[,6] = rpcvar
   
   #BL
-  rpbl = ret%*%wpbl
+  rpbl = ret%*%wptBL
   rpbl[,7] = rpbl
   
   # Benchmark
