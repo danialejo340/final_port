@@ -109,7 +109,7 @@ performance <- function(ret ,r.indice){
   for(i in 2:t){
     vBL[i] = vBL[i-1]*exp(rpbl[i-1])
   }
-  vBL[,7] <- vBL
+  vport[,7] <- vBL
   
   
   # Benchmark
