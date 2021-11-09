@@ -127,5 +127,16 @@ performance <- function(ret ,r.indice){
   DH <- list()
   DH[[1]] <- vport
   DH[[2]] <- rport
-  return(DH)
+  
+  VBA = list()
+  VBA[[1]] = rpmv
+  VBA[[2]] = rpsharpe
+  VBA[[3]] = rptreynor
+  VBA[[4]] = rpsortino
+  VBA[[5]] = rpomega
+  VBA[[6]] = rpcvar
+  VBA[[7]] = rpbl
+  VBA[[8]] = r.benchmark
+ 
+  return(DH, VBA)
 }
