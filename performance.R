@@ -4,12 +4,13 @@
 ## Teoria de portafolios - 2021-2
 ## ---------------------------------
 
+
 performance <- function(ret ,r.indice){
   t <- nrow(ret)
-  rport <- matrix(0,nrow=t,ncol=7) # aumentar para cvar a 7 col
-  colnames(rport) <- c("PMVG","Sharpe","Treynor", "Sortino", "Omega","Cvar", "Benchmark") # añadir cvar
-  vport <- matrix(0,nrow=t,ncol=7)
-  colnames(vport) <- c("PMVG","Sharpe","Treynor", "Sortino", "Omega","Cvar" ,"Benchmark") # añadir cvar
+  rport <- matrix(0,nrow=t,ncol=8) 
+  colnames(rport) <- c("PMVG","Sharpe","Treynor", "Sortino", "Omega","Cvar", "BL", "Benchmark") 
+  vport <- matrix(0,nrow=t,ncol=8)
+  colnames(vport) <- c("PMVG","Sharpe","Treynor", "Sortino", "Omega","Cvar", "BL","Benchmark") 
   
   # Retornos
   
@@ -33,13 +34,17 @@ performance <- function(ret ,r.indice){
   rpomega = ret%*%wpomega
   rport[,5] = rpomega
   
-  CVaR
+  #CVaR
   rpcvar = ret%*%wpcvar
   rport[,6] = rpcvar
   
+  #BL
+  rpbl = ret%*%wpbl
+  rpbl[,7] = rpbl
+  
   # Benchmark
   r.benchmark <- r.indice
-  rport[,7] <- r.benchmark
+  rport[,8] <- r.benchmark
   
   # Valor del portafolio
   # PMV
@@ -57,7 +62,7 @@ performance <- function(ret ,r.indice){
   port.sharpe <- matrix(0, nrow=t)
   port.sharpe[1] <- valor
   for(i in 2:t){
-  port.sharpe[i] <- port.sharpe[i-1]*exp(rpsharpe[i-1])
+    port.sharpe[i] <- port.sharpe[i-1]*exp(rpsharpe[i-1])
   }
   vport[,2] <- port.sharpe
   
@@ -91,13 +96,22 @@ performance <- function(ret ,r.indice){
   #CVaR
   v.cvar = matrix(0, nrow = t)
   v.cvar[1] = valor
-
+  
   for(i in 2:t){
     v.cvar[i] = v.cvar[i-1]*exp(rpcvar[i-1])
   }
   vport[,6] <- v.cvar
   
-
+  #BL
+  vBL = matrix(0, nrow = t)
+  vBL[1] = valor
+  
+  for(i in 2:t){
+    vBL[i] = vBL[i-1]*exp(rpbl[i-1])
+  }
+  vBL[,7] <- vBL
+  
+  
   # Benchmark
   
   v.benchmark <- matrix(0, nrow = t)
@@ -106,7 +120,7 @@ performance <- function(ret ,r.indice){
   for(i in 2:t){
     v.benchmark[i] <- v.benchmark[i-1]*exp(r.benchmark[i-1])
   }
-  vport[,7] <- v.benchmark
+  vport[,8] <- v.benchmark
   
   
   
