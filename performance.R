@@ -40,7 +40,7 @@ performance <- function(ret ,r.indice){
   
   #BL
   rpbl = ret%*%wptBL
-  rpbl[,7] = rpbl
+  rport[,7] = rpbl
   
   # Benchmark
   r.benchmark <- r.indice
